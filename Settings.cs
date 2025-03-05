@@ -34,7 +34,7 @@ public class Settings : ISettings
     public RangeNode<float> CustomFilterBorderRounding { get; set; } = new(0, 0, 25);
     public RangeNode<int> CustomFilterBorderDeflation { get; set; } = new(8, 0, 100);
 
-    public RangeNode<int> ExtraDelay { get; set; } = new(20, 0, 100);
+    public RangeNode<int> ExtraDelay { get; set; } = new(20, 0, 200);
 
     [Menu("Use Thread.Sleep", "Is a little faster, but HUD will hang while clicking")]
     public ToggleNode UseThreadSleep { get; set; } = new(false);
