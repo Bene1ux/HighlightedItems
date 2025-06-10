@@ -214,7 +214,7 @@ public class HighlightedItems : BaseSettingsPlugin<Settings>
                 Keyboard.KeyUp(Keys.LShiftKey);
             }
 
-            return;
+            //return;
         }
 
 
@@ -228,12 +228,12 @@ public class HighlightedItems : BaseSettingsPlugin<Settings>
                     IsVisible: true,
                     VisibleStash: { InventoryUIElement: { } invRect } visibleStash,
                     Children: var children
-                }, _) => (visibleStash, invRect, children[3].Children[3].Children[0].Text),
+                }, _) => (visibleStash, invRect, children[3].Children[1].Children[0].Text),
                 (_, {
                     IsVisible: true,
                     VisibleStash: { InventoryUIElement: { } invRect } visibleStash,
                     Children: var children
-                }) => (visibleStash, invRect, children[3].Children[3].Children[0].Text),
+                }) => (visibleStash, invRect, children[3].Children[1].Children[0].Text),
                 _ => (null, null, null)
             };
 
@@ -266,16 +266,11 @@ public class HighlightedItems : BaseSettingsPlugin<Settings>
 
             if (isCustomFilter && isTextSet)
             {
-                foreach (var item in inventory.VisibleInventoryItems)
+                foreach (var item in inventory.VisibleInventoryItems.Where(i =>
+                             i.isHighlighted && !highlightedItems.Contains(i)))
                 {
-                    if (highlightedItems.Any(h => h.IndexInParent == item.IndexInParent) || !item.isHighlighted)
-                    {
-                        continue;
-                    }
-
                     var rect = item.GetClientRectCache;
-                    Graphics.DrawFrame(rect.TopLeft.ToVector2Num(), rect.BottomRight.ToVector2Num(), Color.Red,
-                        Settings.CustomFilterFrameThickness + 8);
+                    Graphics.DrawBox(rect.TopLeft.ToVector2Num(), rect.BottomRight.ToVector2Num(), Color.Black);
                 }
             }
 
@@ -458,6 +453,11 @@ public class HighlightedItems : BaseSettingsPlugin<Settings>
                 break;
             }
 
+            if (i % 50 == 0)
+            {
+                await Wait(TimeSpan.FromMilliseconds(600), false);
+            }
+
             await MoveItem(item.GetClientRect().Center);
         }
 
@@ -515,6 +515,11 @@ public class HighlightedItems : BaseSettingsPlugin<Settings>
             {
                 DebugWindow.LogMsg("HighlightedItems: Inventory full, aborting loop");
                 break;
+            }
+
+            if (i % 50 == 0)
+            {
+                await Wait(TimeSpan.FromMilliseconds(600), false);
             }
 
             await MoveItem(item.GetClientRect().Center);
@@ -640,12 +645,13 @@ public class HighlightedItems : BaseSettingsPlugin<Settings>
 
         var isPressed = Control.MouseButtons == MouseButtons.Left && CanClickButtons;
         _mouseStateForRect[buttonRect] = isPressed;
-        if (isPressed&&GameController.IngameState.IngameUi.Cursor.Action == MouseActionType.UseItem &&
+        if (isPressed && GameController.IngameState.IngameUi.Cursor.Action == MouseActionType.UseItem &&
             !Input.IsKeyDown(Keys.LShiftKey))
         {
             DebugWindow.LogMsg("Shift down");
             Keyboard.KeyDown(Keys.LShiftKey);
         }
+
         return isPressed &&
                prevState == false;
     }
