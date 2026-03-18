@@ -59,7 +59,9 @@ public class HighlightedItems : BaseSettingsPlugin<Settings>
 
     private Predicate<Entity> GetPredicate(string windowTitle, ref string filterText, Vector2 defaultPosition)
     {
-        if (!Settings.ShowCustomFilterWindow) return null;
+        bool isInventoryFilter = windowTitle.Contains("inventory");
+        if (!Settings.ShowCustomFilterWindowStash && !isInventoryFilter
+            || !Settings.ShowCustomFilterWindowInventory && isInventoryFilter) return null;
         Settings.SavedFilters ??= [];
         ImGui.SetNextWindowPos(defaultPosition, ImGuiCond.FirstUseEver);
         if (ImGui.Begin(windowTitle, ImGuiWindowFlags.NoDecoration | ImGuiWindowFlags.AlwaysAutoResize))
@@ -192,13 +194,16 @@ public class HighlightedItems : BaseSettingsPlugin<Settings>
         return null;
     }
 
+    public bool IsAnythingHighlighted = false;
+    public bool ShouldUnholdShift = false;
+
     public override void Render()
     {
         if (_currentOperation != null)
         {
             DebugWindow.LogMsg("Running the inventory dump procedure...");
             TaskUtils.RunOrRestart(ref _currentOperation, () => null);
-            if (_itemsToMove is { Count: > 0 } itemsToMove)
+            /*if (_itemsToMove is { Count: > 0 } itemsToMove)
             {
                 foreach (var (rect, color) in itemsToMove.Skip(1).Select(x => (x, Settings.CustomFilterFrameColor))
                              .Prepend((itemsToMove[0], Color.Green)))
@@ -206,15 +211,19 @@ public class HighlightedItems : BaseSettingsPlugin<Settings>
                     Graphics.DrawFrame(rect.TopLeft.ToVector2Num(), rect.BottomRight.ToVector2Num(), color,
                         Settings.CustomFilterFrameThickness);
                 }
-            }
-
+            }*/
             if (Input.IsKeyDown(Keys.LShiftKey) && _currentOperation is null)
             {
-                DebugWindow.LogMsg($"Shift up");
-                Keyboard.KeyUp(Keys.LShiftKey);
+                ShouldUnholdShift = true;
             }
-
             //return;
+        }
+
+        if (ShouldUnholdShift && (!Settings.HoldShiftForMapsIfNecessary.Value || !IsAnythingHighlighted))
+        {
+            ShouldUnholdShift = false;
+            DebugWindow.LogMsg($"Shift up");
+            Keyboard.KeyUp(Keys.LShiftKey);
         }
 
 
@@ -304,8 +313,10 @@ public class HighlightedItems : BaseSettingsPlugin<Settings>
             Graphics.DrawText($"{countText}", countPos with { X = countPos.X - 2 }, SharpDX.Color.White,
                 FontAlign.Right);
 
-            if (IsButtonPressed(buttonRect) ||
-                Input.IsKeyDown(Settings.MoveToInventoryHotkey.Value))
+            if
+                ( /*IsAnythingHighlighted&&Settings.ContinueUseOrbsWhileHighlighted.Value&&_currentOperation is null&&GameController.IngameState.IngameUi.Cursor.Action is MouseActionType.UseItem||*/
+                 IsButtonPressed(buttonRect) ||
+                 Input.IsKeyDown(Settings.MoveToInventoryHotkey.Value))
             {
                 var orderedItems = highlightedItems
                     .OrderBy(stashItem => stashItem.GetClientRectCache.X)
@@ -321,6 +332,8 @@ public class HighlightedItems : BaseSettingsPlugin<Settings>
                 _customStashFilter = "";
             }
         }
+
+        IsAnythingHighlighted = highlightedItemsFound;
 
         var inventoryPanel = InGameState.IngameUi.InventoryPanel;
         if (inventoryPanel.IsVisible)
@@ -342,7 +355,7 @@ public class HighlightedItems : BaseSettingsPlugin<Settings>
 
                 if (isCustomFilter)
                 {
-                    foreach (var item in GameController.IngameState.ServerData.PlayerInventories[0].Inventory
+                    foreach (var item in GameController.IngameState.IngameUi.InventoryPanel[InventoryIndex.PlayerInventory].ServerInventory
                                  .InventorySlotItems.Where(x => itemFilter(x.Item)))
                     {
                         var rect = item.GetClientRect();
@@ -358,7 +371,7 @@ public class HighlightedItems : BaseSettingsPlugin<Settings>
                     !highlightedItemsFound &&
                     Input.IsKeyDown(Settings.MoveToInventoryHotkey.Value))
                 {
-                    var inventoryItems = GameController.IngameState.ServerData.PlayerInventories[0].Inventory
+                    var inventoryItems = GameController.IngameState.IngameUi.InventoryPanel[InventoryIndex.PlayerInventory].ServerInventory
                         .InventorySlotItems
                         .Where(x => !IsInIgnoreCell(x))
                         .Where(x => itemFilter(x.Item))
@@ -431,13 +444,18 @@ public class HighlightedItems : BaseSettingsPlugin<Settings>
         }
 
         var prevMousePos = Mouse.GetCursorPosition();
-        for (var i = 0; i < items.Count; i++)
+        var itemLocationIdPairs = items.Select(i => (i.GetClientRect().Center,i.Item.Id)).ToList();
+        Keyboard.KeyDown(Keys.LControlKey);
+        await Wait(KeyDelay, true);
+        for (var i = 0; i < itemLocationIdPairs.Count; i++)
         {
-            var item = items[i];
-            _itemsToMove = items[i..].Select(x => x.GetClientRect()).ToList();
+            var itemLocationId = itemLocationIdPairs[i];
+            // _itemsToMove = items[i..].Select(x => x.GetClientRect()).ToList();
             if (MoveCancellationRequested)
             {
-                _itemsToMove = null;
+                //  _itemsToMove = null;
+                Keyboard.KeyUp(Keys.LControlKey);
+                await Wait(KeyDelay, false);
                 return false;
             }
 
@@ -453,16 +471,19 @@ public class HighlightedItems : BaseSettingsPlugin<Settings>
                 break;
             }
 
-            if (i % 50 == 0)
+            /*if (Settings.DelayBetweenNItems.Value != 0 && i > 0 && i % Settings.DelayBetweenNItems.Value == 0
+                && GameController.IngameState.IngameUi.Cursor.ActionString is "corrupt_item" or "identify")
             {
-                await Wait(TimeSpan.FromMilliseconds(600), false);
-            }
+                await Wait(TimeSpan.FromMilliseconds(Settings.DelayTime.Value), false);
+            }*/
 
-            await MoveItem(item.GetClientRect().Center);
+            await MoveItem(itemLocationId.Center,itemLocationId.Id);
         }
 
         Mouse.moveMouse(prevMousePos);
-        _itemsToMove = null;
+        Keyboard.KeyUp(Keys.LControlKey);
+        await Wait(KeyDelay, false);
+        //_itemsToMove = null;
         return true;
     }
 
@@ -479,7 +500,7 @@ public class HighlightedItems : BaseSettingsPlugin<Settings>
         || InGameState.IngameUi.StashElement.IsVisible
         || InGameState.IngameUi.GuildStashElement.IsVisible;
 
-    private List<RectangleF> _itemsToMove = null;
+    //private List<RectangleF> _itemsToMove = null;
 
     private async SyncTask<bool> MoveItemsToInventory(List<NormalInventoryItem> items)
     {
@@ -489,13 +510,18 @@ public class HighlightedItems : BaseSettingsPlugin<Settings>
         }
 
         var prevMousePos = Mouse.GetCursorPosition();
-        for (var i = 0; i < items.Count; i++)
+        var itemLocationIdPairs = items.Select(i => (i.GetClientRect().Center,i.Item.Id)).ToList();
+        Keyboard.KeyDown(Keys.LControlKey);
+        await Wait(KeyDelay, true);
+        for (var i = 0; i < itemLocationIdPairs.Count; i++)
         {
-            var item = items[i];
-            _itemsToMove = items[i..].Select(x => x.GetClientRectCache).ToList();
+            var itemLocationId = itemLocationIdPairs[i];
+            //_itemsToMove = items[i..].Select(x => x.GetClientRectCache).ToList();
             if (MoveCancellationRequested)
             {
-                _itemsToMove = null;
+                //_itemsToMove = null;
+                Keyboard.KeyUp(Keys.LControlKey);
+                await Wait(KeyDelay, false);
                 return false;
             }
 
@@ -517,16 +543,20 @@ public class HighlightedItems : BaseSettingsPlugin<Settings>
                 break;
             }
 
-            if (i % 50 == 0)
+            if (Settings.DelayBetweenNItems.Value != 0 && i > 0 && i % Settings.DelayBetweenNItems.Value == 0
+                && GameController.IngameState.IngameUi.Cursor.ActionString is "corrupt_item" or "identify")
             {
-                await Wait(TimeSpan.FromMilliseconds(600), false);
+                await Wait(TimeSpan.FromMilliseconds(Settings.DelayTime.Value), false);
             }
 
-            await MoveItem(item.GetClientRect().Center);
+
+            await MoveItem(itemLocationId.Center,itemLocationId.Id);
         }
 
+        Keyboard.KeyUp(Keys.LControlKey);
+        await Wait(KeyDelay, false);
         Mouse.moveMouse(prevMousePos);
-        _itemsToMove = null;
+        //_itemsToMove = null;
         return true;
     }
 
@@ -550,7 +580,7 @@ public class HighlightedItems : BaseSettingsPlugin<Settings>
 
     private bool IsInventoryFull()
     {
-        var inventoryItems = GameController.IngameState.ServerData.PlayerInventories[0].Inventory.InventorySlotItems;
+        var inventoryItems = GameController.IngameState.IngameUi.InventoryPanel[InventoryIndex.PlayerInventory].ServerInventory.InventorySlotItems;
 
         // quick sanity check
         if (inventoryItems.Count < 12)
@@ -594,29 +624,32 @@ public class HighlightedItems : BaseSettingsPlugin<Settings>
     }
 
     private static readonly TimeSpan KeyDelay = TimeSpan.FromMilliseconds(10);
-    private static readonly TimeSpan MouseMoveDelay = TimeSpan.FromMilliseconds(20);
-    private TimeSpan MouseDownDelay => TimeSpan.FromMilliseconds(5 + Settings.ExtraDelay.Value);
-    private static readonly TimeSpan MouseUpDelay = TimeSpan.FromMilliseconds(5);
+    private TimeSpan ExtraDelay => TimeSpan.FromMilliseconds(Settings.ExtraDelay.Value);
+    private TimeSpan MouseDownDelay => TimeSpan.FromMilliseconds(Settings.MouseDownDelay.Value);
+    //private TimeSpan MouseUpDelay => TimeSpan.FromMilliseconds(Settings.MouseUpDelay.Value);
 
-    private async SyncTask<bool> MoveItem(SharpDX.Vector2 itemPosition)
+    private async SyncTask<bool> MoveItem(SharpDX.Vector2 itemPosition, uint id)
     {
         itemPosition += WindowOffset;
-        Keyboard.KeyDown(Keys.LControlKey);
-        await Wait(KeyDelay, true);
-        Mouse.moveMouse(itemPosition);
-        await Wait(MouseMoveDelay, true);
+        if (!Input.IsKeyDown(Keys.LShiftKey))
+        {
+            Keyboard.KeyDown(Keys.LControlKey);
+            await Wait(KeyDelay, true);
+        }
+
+        await HoverEntity(itemPosition, id);
+        await Wait(ExtraDelay, true);
         Mouse.LeftDown();
         await Wait(MouseDownDelay, true);
         Mouse.LeftUp();
-        await Wait(MouseUpDelay, true);
-        Keyboard.KeyUp(Keys.LControlKey);
-        await Wait(KeyDelay, false);
+        await Wait(ExtraDelay, true);
+       
         return true;
     }
 
     private async SyncTask<bool> Wait(TimeSpan period, bool canUseThreadSleep)
     {
-        if (canUseThreadSleep && Settings.UseThreadSleep)
+        if (canUseThreadSleep && Settings.UseThreadSleep&&period.TotalMilliseconds>0)
         {
             Thread.Sleep(period);
             return true;
@@ -629,6 +662,50 @@ public class HighlightedItems : BaseSettingsPlugin<Settings>
         }
 
         return true;
+    }
+    
+    /*private async SyncTask<bool> HoverElement(SharpDX.Vector2 itemPosition,long address)
+    {
+        Mouse.moveMouse(itemPosition);
+        var isHoverCorrect = false;
+        var retryCount = 4;
+        var uiHoverElement = GameController.IngameState.UIHoverElement;
+        for (int i = 0; i < retryCount; i++)
+        {
+            if (uiHoverElement?.Entity != null && uiHoverElement.Address == address)
+            {
+                isHoverCorrect = true;
+                break;
+            }
+    
+            Mouse.moveMouse(itemPosition);
+            await TaskUtils.NextFrame();
+            uiHoverElement = GameController.IngameState.UIHoverElement;
+        }
+        
+        return isHoverCorrect;
+    }*/
+    
+    private async SyncTask<bool> HoverEntity(SharpDX.Vector2 itemPosition,uint id)
+    {
+        Mouse.moveMouse(itemPosition);
+        var isHoverCorrect = false;
+        var retryCount = 4;
+        var uiHoverElement = GameController.IngameState.UIHoverElement;
+        for (int i = 0; i < retryCount; i++)
+        {
+            if (uiHoverElement?.Entity != null && uiHoverElement.Entity.Id == id)
+            {
+                isHoverCorrect = true;
+                break;
+            }
+    
+            Mouse.moveMouse(itemPosition);
+            await TaskUtils.NextFrame();
+            uiHoverElement = GameController.IngameState.UIHoverElement;
+        }
+        
+        return isHoverCorrect;
     }
 
     private readonly ConcurrentDictionary<RectangleF, bool?> _mouseStateForRect = [];

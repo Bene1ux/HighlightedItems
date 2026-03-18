@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <OutputType>Library</OutputType>
     <UseWindowsForms>true</UseWindowsForms>
     <PlatformTarget>x64</PlatformTarget>
@@ -9,8 +9,26 @@
     <DebugType>embedded</DebugType>
     <PathMap>$(MSBuildProjectDirectory)=$(MSBuildProjectName)</PathMap>
     <EmbedAllSources>true</EmbedAllSources>
+    <CopyToPlugins>false</CopyToPlugins>
     <OutputPath Condition="'$(ExApiPluginOutputPath)' != ''">$(ExApiPluginOutputPath)$(MSBuildProjectName)</OutputPath>
   </PropertyGroup>
+
+  <Target Name="CopyToPluginsFolder" AfterTargets="Build" Condition="'$(CopyToPlugins)' == 'True'" Label="Copy dll to plugins folder">
+    <!-- Define the source and destination paths -->
+    <PropertyGroup>
+      <!-- $(TargetFileName) will use the output dll name -->
+      <SourcePath>$(OutputPath)$(TargetFileName)</SourcePath>
+      <!-- Set destination path to your dpb\Plugins\<YourProjectName> directory -->
+      <DestinationPath>$(exapiPackage)\Plugins\Compiled\$(ProjectName)</DestinationPath>
+    </PropertyGroup>
+
+    <!-- Create the destination folder if it doesn't exist -->
+    <MakeDir Directories="$(DestinationPath)" />
+
+    <!-- Copy the output DLL to the target Plugins folder -->
+    <Copy SourceFiles="$(SourcePath)" DestinationFolder="$(DestinationPath)" />
+  </Target>
+  
   <ItemGroup>
     <None Remove="images\*.png" />
   </ItemGroup>
@@ -26,6 +44,7 @@
     </Reference>
     <Reference Include="ItemFilterLibrary">
       <HintPath>$(exapiPackage)\ItemFilterLibrary.dll</HintPath>
+      <Private>False</Private>
     </Reference>
   </ItemGroup>
   <ItemGroup>

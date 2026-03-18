@@ -16,7 +16,10 @@ public class Settings : ISettings
 
     [Menu("Enable Inventory Dump Button")]
     public ToggleNode DumpButtonEnable { get; set; } = new(true);
-
+    public RangeNode<int> DelayBetweenNItems { get; set; } = new(0, 0, 144);
+    public ToggleNode HoldShiftForMapsIfNecessary { get; set; } = new(true);
+    //public ToggleNode ContinueUseOrbsWhileHighlighted { get; set; } = new(true);
+    public RangeNode<int> DelayTime { get; set; } = new(0, 0, 3000);
     public ToggleNode ShowStackSizes { get; set; } = new(true);
 
     [Menu("Show Stack Count Next to Stack Size")]
@@ -26,15 +29,17 @@ public class Settings : ISettings
     public ToggleNode UseMoveToInventoryAsMoveToStashWhenNoHighlights { get; set; } = new(false);
     public HotkeyNode MoveToStashHotkey { get; set; } = new(Keys.None);
     public ToggleNode InvertSelection { get; set; } = new(false);
-    public ToggleNode ShowCustomFilterWindow { get; set; } = new(true);
+    public ToggleNode ShowCustomFilterWindowStash { get; set; } = new(true);
+    public ToggleNode ShowCustomFilterWindowInventory { get; set; } = new(false);
     public ToggleNode ResetCustomFilterOnPanelClose { get; set; } = new(true);
     public ToggleNode UsePopupForFilterSelector { get; set; } = new(false);
     public RangeNode<int> CustomFilterFrameThickness { get; set; } = new(2, 1, 20);
     public ColorNode CustomFilterFrameColor { get; set; } = new(Color.Violet);
     public RangeNode<float> CustomFilterBorderRounding { get; set; } = new(0, 0, 25);
     public RangeNode<int> CustomFilterBorderDeflation { get; set; } = new(8, 0, 100);
-
     public RangeNode<int> ExtraDelay { get; set; } = new(20, 0, 200);
+    public RangeNode<int> MouseDownDelay { get; set; } = new(20, 0, 200);
+    //public RangeNode<int> MouseUpDelay { get; set; } = new(5, 0, 200);
 
     [Menu("Use Thread.Sleep", "Is a little faster, but HUD will hang while clicking")]
     public ToggleNode UseThreadSleep { get; set; } = new(false);
