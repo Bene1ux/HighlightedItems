@@ -231,18 +231,23 @@ public class HighlightedItems : BaseSettingsPlugin<Settings>
             return;
 
         var (inventory, rectElement, highlightText) =
-            (InGameState.IngameUi.StashElement, InGameState.IngameUi.GuildStashElement) switch
+            (InGameState.IngameUi.StashElement, InGameState.IngameUi.GuildStashElement, InGameState.IngameUi.PurchaseWindow) switch
             {
                 ({
                     IsVisible: true,
                     VisibleStash: { InventoryUIElement: { } invRect } visibleStash,
                     Children: var children
-                }, _) => (visibleStash, invRect, children[3].Children[1].Children[0].Text),
+                }, _,_) => (visibleStash, invRect, children[3].Children[1].Children[0].Text),
                 (_, {
                     IsVisible: true,
                     VisibleStash: { InventoryUIElement: { } invRect } visibleStash,
                     Children: var children
-                }) => (visibleStash, invRect, children[3].Children[1].Children[0].Text),
+                },_) => (visibleStash, invRect, children[3].Children[1].Children[0].Text),
+                (_,_,{
+                    IsVisible: true,
+                    TabContainer: { VisibleStash: { InventoryUIElement: { } invRect } visibleStash } purchaseWindow,
+                    Children: var children
+                }) => (visibleStash, invRect, children[4].Children[1].Children[0].Text),
                 _ => (null, null, null)
             };
 
@@ -342,8 +347,10 @@ public class HighlightedItems : BaseSettingsPlugin<Settings>
 
             var (itemFilter, isCustomFilter) = GetPredicate("Custom inventory filter", ref _customInventoryFilter,
                 inventoryRect.BottomLeft.ToVector2Num()) is { } customPredicate
-                ? (customPredicate, true)
-                : (_ => true, false);
+                ? (
+                    (Predicate<NormalInventoryItem>)(s =>
+                        s.IsSaturated && customPredicate(s.Item)), true)
+                : (s => s.IsSaturated, false);
 
             if (Settings.DumpButtonEnable && IsStashTargetOpened)
             {
@@ -355,8 +362,8 @@ public class HighlightedItems : BaseSettingsPlugin<Settings>
 
                 if (isCustomFilter)
                 {
-                    foreach (var item in GameController.IngameState.IngameUi.InventoryPanel[InventoryIndex.PlayerInventory].ServerInventory
-                                 .InventorySlotItems.Where(x => itemFilter(x.Item)))
+                    foreach (var item in GameController.IngameState.IngameUi.InventoryPanel[InventoryIndex.PlayerInventory].VisibleInventoryItems
+                                 .Where(x => itemFilter(x)))
                     {
                         var rect = item.GetClientRect();
                         Graphics.DrawFrame(rect.TopLeft.ToVector2Num(), rect.BottomRight.ToVector2Num(),
@@ -371,13 +378,13 @@ public class HighlightedItems : BaseSettingsPlugin<Settings>
                     !highlightedItemsFound &&
                     Input.IsKeyDown(Settings.MoveToInventoryHotkey.Value))
                 {
-                    var inventoryItems = GameController.IngameState.IngameUi.InventoryPanel[InventoryIndex.PlayerInventory].ServerInventory
-                        .InventorySlotItems
+                    var inventoryItems = GameController.IngameState.IngameUi.InventoryPanel[InventoryIndex.PlayerInventory].VisibleInventoryItems
                         .Where(x => !IsInIgnoreCell(x))
-                        .Where(x => itemFilter(x.Item))
-                        .OrderBy(x => x.PosX)
-                        .ThenBy(x => x.PosY)
+                        .Where(x => itemFilter(x))
+                        .OrderBy(x => x.GetClientRect().X)
+                        .ThenBy(x => x.GetClientRect().Y)
                         .ToList();
+                    DebugWindow.LogMsg($"Moving {inventoryItems.Count} items to stash");
 
                     _currentOperation = MoveItemsToStash(inventoryItems);
                 }
@@ -436,7 +443,7 @@ public class HighlightedItems : BaseSettingsPlugin<Settings>
         }
     }
 
-    private async SyncTask<bool> MoveItemsToStash(List<ServerInventory.InventSlotItem> items)
+    private async SyncTask<bool> MoveItemsToStash(List<NormalInventoryItem> items)
     {
         if (!await MoveItemsCommonPreamble())
         {
@@ -498,7 +505,8 @@ public class HighlightedItems : BaseSettingsPlugin<Settings>
     private bool IsStashSourceOpened =>
         !Settings.VerifyTargetInventoryIsOpened
         || InGameState.IngameUi.StashElement.IsVisible
-        || InGameState.IngameUi.GuildStashElement.IsVisible;
+        || InGameState.IngameUi.GuildStashElement.IsVisible
+        || InGameState.IngameUi.PurchaseWindow.IsVisible;
 
     //private List<RectangleF> _itemsToMove = null;
 
@@ -735,10 +743,10 @@ public class HighlightedItems : BaseSettingsPlugin<Settings>
 
     private bool CanClickButtons => !Settings.VerifyButtonIsNotObstructed || !ImGui.GetIO().WantCaptureMouse;
 
-    private bool IsInIgnoreCell(ServerInventory.InventSlotItem inventItem)
+    private bool IsInIgnoreCell(NormalInventoryItem inventItem)
     {
-        var inventPosX = inventItem.PosX;
-        var inventPosY = inventItem.PosY;
+        var inventPosX = (int)(inventItem.X / inventItem.Width);
+        var inventPosY = (int)(inventItem.Y / inventItem.Height);
 
         if (inventPosX < 0 || inventPosX >= 12)
             return true;
